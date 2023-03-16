@@ -46,30 +46,31 @@ class BaseWriter:
 
     @staticmethod
     def get_unique_folder(
-        folder_base_name: Union[str, Path],
+        folder_path: Union[str, Path],
+        folder_name: str = "",
         suffix: Union[str, Path] = None,
         create: bool = False,
     ) -> Path:
         """
-        Get a unique foldername of the form '{folder_base_name}_{i}
+        Get a unique foldername of the form '{folder_path/folder_name}_{i}
 
         Parameters
         ----------
-        folder_base_name : str or Path
-            The folder name in which to put data
+        folder_path : str or Path
+            The folder path in which to put data
+        folder_name : str
+            The folder name to use. If not given, the name of the folder_path.
         suffix : str or Path
             If given, to be used as the path suffix. e.g. `.zarr`
         create : bool, default False
             Whether to create the folder.
         '"""
-        folder = Path(folder_base_name).resolve()
-        stem = str(folder.stem)
+        folder = Path(folder_path).resolve()
+        stem = folder_name or str(folder.stem)
 
         def new_path(i):
-            path = folder.parent / (stem + f"_{i}")
-            if suffix:
-                return path.with_suffix(suffix)
-            return path
+            path = folder / f"{stem}_{i}"
+            return path.with_suffix(suffix) if suffix else path
 
         i = 1
         path = new_path(i)
@@ -97,7 +98,7 @@ class BaseWriter:
 
 class SimpleMultiFileTiffWriter(BaseWriter):
     def __init__(
-        self, data_folder_name: Union[str, Path], core: CMMCorePlus = None
+        self, data_folder_path: Union[str, Path], data_folder_name: str = "", core: CMMCorePlus = None
     ) -> None:
         if tifffile is None:
             raise ValueError(
@@ -105,10 +106,11 @@ class SimpleMultiFileTiffWriter(BaseWriter):
                 "Try: `pip install tifffile`"
             )
         super().__init__(core)
+        self._data_folder_path = data_folder_path
         self._data_folder_name = data_folder_name
 
     def _onMDAStarted(self, sequence: MDASequence) -> None:
-        self._path = self.get_unique_folder(self._data_folder_name, create=True)
+        self._path = self.get_unique_folder(self._data_folder_path, self._data_folder_name, create=True)
         self._axis_order = self.sequence_axis_order(sequence)
         with open(self._path / "useq-sequence.json", "w") as f:
             f.write(sequence.json())
