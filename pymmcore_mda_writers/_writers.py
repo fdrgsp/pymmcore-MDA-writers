@@ -169,7 +169,7 @@ class ZarrWriter(BaseWriter):
             shape=sequence.shape + self._img_shape,
             dtype=self._dtype,
         )
-        self._z.attrs["axis_order"] = sequence.axis_order + "yx"
+        self._z.attrs["axis_order"] = f"{sequence.axis_order}yx"
         self._z.attrs["useq-sequence"] = sequence.json()
 
     def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
