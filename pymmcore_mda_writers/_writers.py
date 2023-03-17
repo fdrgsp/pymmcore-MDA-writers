@@ -98,7 +98,7 @@ class BaseWriter:
 
 class SimpleMultiFileTiffWriter(BaseWriter):
     def __init__(
-        self, data_folder_path: Union[str, Path], data_folder_name: str = "", core: CMMCorePlus = None
+        self, data_folder_path: Union[str, Path] = "", data_folder_name: str = "", core: CMMCorePlus = None
     ) -> None:
         if tifffile is None:
             raise ValueError(
