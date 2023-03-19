@@ -4,13 +4,14 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 import zarr
 from pymmcore_plus import CMMCorePlus
 from pymmcore_plus.mda import MDAEngine
 from useq import MDASequence
 
-from pymmcore_mda_writers import SimpleMultiFileTiffWriter, ZarrWriter
+from pymmcore_mda_writers import ZarrMDASequenceWriter, MiltiTiffMDASequenceWriter
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -32,8 +33,8 @@ def test_engine_registration(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         channels=[{"config": "DAPI", "exposure": 1}],
     )
 
-    writer = ZarrWriter(  # noqa
-        tmp_path / "zarr_data", (512, 512), dtype=np.uint16, core=core
+    writer = ZarrMDASequenceWriter(  # noqa
+        tmp_path, "zarr_data", dtype=np.uint16, core=core
     )
     new_engine = MDAEngine(core)
     with qtbot.waitSignal(core.events.mdaEngineRegistered):
@@ -42,9 +43,9 @@ def test_engine_registration(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         core.run_mda(mda)
     with qtbot.waitSignal(core.mda.events.sequenceFinished):
         core.run_mda(mda)
-    run1 = zarr.open(tmp_path / "zarr_data_1.zarr")
+    run1 = zarr.open(tmp_path / "zarr_data_000.zarr")
     arr1 = np.asarray(run1)
-    run2 = zarr.open(tmp_path / "zarr_data_2.zarr")
+    run2 = zarr.open(tmp_path / "zarr_data_001.zarr")
     arr2 = np.asarray(run2)
     assert arr1.shape == (1, 1, 4, 512, 512)
     assert arr2.shape == (1, 1, 4, 512, 512)
@@ -52,8 +53,10 @@ def test_engine_registration(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         assert not np.all(arr1[0, 0, i] == 0)
         assert not np.all(arr2[0, 0, i] == 0)
     attrs = run2.attrs.asdict()
-    assert "tpczyx" == attrs["axis_order"]
-    assert mda == MDASequence(**json.loads(attrs["useq-sequence"]))
+    assert attrs["name"] == "zarr_data_001"
+    assert attrs["axis_labels"] == ["p", "c", "z", "y", "x"]
+    assert attrs["uid"] == str(mda.uid)
+    assert mda == MDASequence(**json.loads(attrs["sequence"]))
 
 
 def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
@@ -64,7 +67,7 @@ def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         z_plan={"range": 3, "step": 1},
         channels=[{"config": "DAPI", "exposure": 1}],
     )
-    writer = SimpleMultiFileTiffWriter(str(tmp_path / "mda_data"), core=core)  # noqa
+    writer = MiltiTiffMDASequenceWriter(str(tmp_path / "mda_data"), core=core)  # noqa
 
     # run twice to check that we aren't overwriting files
     with qtbot.waitSignal(core.mda.events.sequenceFinished):
@@ -73,10 +76,11 @@ def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         core.run_mda(mda).join()
 
     # check that the correct folders/files were generated
-    data_folders = set(tmp_path.glob("mda_data*"))
-    assert {tmp_path / "mda_data_1", tmp_path / "mda_data_2"}.issubset(
-        set(data_folders)
-    )
+    data_folders = set(tmp_path.glob("mda_data/mda_data*"))
+    assert {
+        tmp_path / "mda_data" / "mda_data_000",
+        tmp_path / "mda_data" / "mda_data_001",
+    }.issubset(set(data_folders))
     expected = [
         Path("t000_p000_c000_z000.tiff"),
         Path("t001_p000_c000_z000.tiff"),
@@ -87,12 +91,12 @@ def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         Path("t000_p000_c000_z002.tiff"),
         Path("t000_p000_c000_z003.tiff"),
     ]
-    actual_1 = list((tmp_path / "mda_data_1").glob("*"))
-    actual_2 = list((tmp_path / "mda_data_2").glob("*"))
+    actual_1 = list((tmp_path / "mda_data" / "mda_data_000").glob("*"))
+    actual_2 = list((tmp_path / "mda_data" / "mda_data_001").glob("*"))
     for e in expected:
-        assert tmp_path / "mda_data_1" / e in actual_1
-        assert tmp_path / "mda_data_2" / e in actual_2
-    with open(tmp_path / "mda_data_1" / "useq-sequence.json") as f:
+        assert tmp_path / "mda_data" / "mda_data_000" / e in actual_1
+        assert tmp_path / "mda_data" / "mda_data_001" / e in actual_2
+    with open(tmp_path / "mda_data" / "mda_data_000" / "useq-sequence.json") as f:
         seq = MDASequence(**json.load(f))
     assert seq == mda
 
@@ -100,11 +104,11 @@ def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
 def test_missing_deps():
     with patch("pymmcore_mda_writers._writers.tifffile", None):
         with pytest.raises(ValueError) as e:
-            SimpleMultiFileTiffWriter("blarg")
+            MiltiTiffMDASequenceWriter("blarg")
         assert "requires tifffile to be installed" in str(e)
     with patch("pymmcore_mda_writers._writers.zarr", None):
         with pytest.raises(ValueError) as e:
-            ZarrWriter("blarg", (512, 512), np.uint16)
+            ZarrMDASequenceWriter("blarg", np.uint16)
         assert "requires zarr to be installed" in str(e)
 
 
@@ -115,7 +119,7 @@ def test_disconnect(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         channels=[{"config": "DAPI", "exposure": 1}],
     )
 
-    writer = SimpleMultiFileTiffWriter(tmp_path / "mda_data", core)
+    writer = MiltiTiffMDASequenceWriter(tmp_path / "mda_data", core)
     with qtbot.waitSignal(core.mda.events.sequenceFinished):
         core.run_mda(mda).join()
     writer.disconnect()
@@ -124,3 +128,37 @@ def test_disconnect(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
     data_folders = set(tmp_path.glob("mda_data*"))
     assert len(data_folders) == 1
     # assert writer._onMDAFrame.call_count == 3
+
+
+# sequence = MDASequence(
+#     axis_order="tpgcz",
+#     channels=[
+#         {"config": "Cy5", "exposure": 20},
+#         {"config": "FITC", "exposure": 50},
+#     ],
+#     stage_positions=(
+#         {"name": "Pos000", "x": 222, "y": 1, "z": 1},
+#         {"name": "Pos001", "x": 111, "y": 0, "z": 0},
+#         {
+#             "name": "Pos002",
+#             "x": 1,
+#             "y": 2,
+#             "z": 3,
+#             "sequence": {
+#                 "grid_plan": {"rows": 3, "columns": 3},
+#                 "z_plan": {"range": 4, "step": 0.5},
+#                 "channels": [{"config": "Cy5", "exposure": 20}],
+#                 "time_plan": {"interval": 2, "loops": 5}
+#             },
+#         },
+#     ),
+#     grid_plan={"rows": 2, "columns": 2},
+#     z_plan={"range": 2, "step": 1},
+#     time_plan={"interval": 2, "loops": 2},
+# )
+
+
+# core = CMMCorePlus().instance()
+# core.loadSystemConfiguration()
+# w = ZarrMDASequenceWriter(path=Path("/Users/fdrgsp/Desktop/test"))
+# core.run_mda(sequence)

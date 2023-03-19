@@ -100,6 +100,7 @@ class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
         self,
         folder_path: str | Path | None = None,
         file_name: str = "",
+        dtype: npt.DTypeLike | None = None,
         core: CMMCorePlus = None,
     ) -> None:
         """Write each frame from a MDASequence as a separate tiff file.
@@ -183,12 +184,14 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
         self,
         folder_path: Path | str | None = None,
         file_name: str = "",
+        dtype: str = "uint16",
         core: CMMCorePlus = None,
     ) -> None:
         super().__init__(core)
 
         self.folder_path = folder_path
         self.file_name = file_name
+        self._dtype = dtype
         self._zarr: zarr.Array | None = None
 
     def _onMDAStarted(self, sequence: MDASequence):
@@ -199,8 +202,8 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
         _path = self.get_unique_folder(
             self.folder_path, self.file_name or "exp", create=True, suffix=".zarr"
         )
-        dtype = f"uint{self._core.getImageBitDepth()}"
-        self._create_zarr(sequence, _path, _shape, dtype, _axis_labels)
+        _dtype = self._dtype or f"uint{self._core.getImageBitDepth()}"
+        self._create_zarr(sequence, _path, _shape, _dtype, _axis_labels)
 
     def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
         if self.folder_path is None:
