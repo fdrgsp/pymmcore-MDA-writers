@@ -1,12 +1,11 @@
 from __future__ import annotations
-
-import contextlib
 __all__ = [
-    "BaseWriter",
-    "SimpleMultiFileTiffWriter",
-    "ZarrWriter",
+    "BaseMDASequenceWriter",
+    "MiltiTiffMDASequenceWriter"
     "ZarrMDASequenceWriter",
 ]
+
+import contextlib
 from pathlib import Path
 from typing import Sequence, Tuple, Union, Any, cast
 
@@ -15,7 +14,6 @@ import numpy.typing as npt
 from pymmcore_plus import CMMCorePlus
 from pymmcore_plus.mda import PMDAEngine
 from useq import MDAEvent, MDASequence
-from useq import NoGrid
 
 try:
     import tifffile
@@ -27,7 +25,15 @@ except ModuleNotFoundError:
     zarr = None
 
 
-class BaseWriter:
+class BaseMDASequenceWriter:
+    """Base class for MDASequence writers.
+    
+    Parameters
+    ----------
+    core : CMMCorePlus, optional
+        The core to use. If not specified, the active core will be used
+        (or a new one will be created)
+    """
     def __init__(self, core: CMMCorePlus = None) -> None:
         self._core = core or CMMCorePlus.instance()
         self._core.mda.events.sequenceStarted.connect(self._onMDAStarted)
@@ -57,12 +63,12 @@ class BaseWriter:
         create: bool = False,
     ) -> Path:
         """
-        Get a unique foldername of the form '{folder_path/folder_name}_{i}
+        Get a unique folder name in the form: '{folder_path/folder_name or folder_path.stem}_{iii}'.
 
         Parameters
         ----------
         folder_path : str or Path
-            The folder path in which to put data
+            The folder path in which to put data.
         folder_name : str
             The folder name to use. If not given, the name of the folder_path.
         suffix : str or Path
@@ -101,34 +107,46 @@ class BaseWriter:
         return tuple(event.index[a] for a in axis_order)
 
 
-class SimpleMultiFileTiffWriter(BaseWriter):
+class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
     def __init__(
         self,
-        data_folder_path: Union[str, Path] = "",
-        data_folder_name: str = "",
+        folder_path: str | Path | None = None,
+        file_name: str = "",
         core: CMMCorePlus = None,
     ) -> None:
+        """Write each frame from a MDASequence as a separate tiff file.
+        
+        Parameters
+        ----------
+        folder_path : str or Path, optional
+            The folder path in which to put data. If None, no data will be saved.
+        file_name : str, optional
+            The folder name to use. If not given, the name of the folder_path.
+        core : CMMCorePlus, optional
+            The core to use. If not given, the default core will be used.    
+        """
         if tifffile is None:
             raise ValueError(
                 "This writer requires tifffile to be installed. "
                 "Try: `pip install tifffile`"
             )
         super().__init__(core)
-        self._data_folder_path = data_folder_path
-        self._data_folder_name = data_folder_name
+        self.folder_path = folder_path
+        self.folder_name = file_name
+        self._path: Path | None = None
 
     def _onMDAStarted(self, sequence: MDASequence) -> None:
-        if not self._data_folder_path:
+        if self.folder_path is None:
             return
         self._path = self.get_unique_folder(
-            self._data_folder_path, self._data_folder_name, create=True
+            self.folder_path, self.folder_name, create=True
         )
         self._axis_order = self.sequence_axis_order(sequence)
         with open(self._path / "useq-sequence.json", "w") as f:
             f.write(sequence.json())
 
     def _onMDAFrame(self, img: np.ndarray, event: MDASequence) -> None:
-        if not self._data_folder_path:
+        if self.folder_path is None:
             return
         index = self.event_to_index(self._axis_order, event)
         name = (
@@ -143,73 +161,37 @@ class SimpleMultiFileTiffWriter(BaseWriter):
         tifffile.imwrite(self._path / name, img)
 
 
-class ZarrWriter(BaseWriter):
+class ZarrMDASequenceWriter(BaseMDASequenceWriter):
+    """Write the MDASequence data to a zarr store.
+    
+    Parameters
+    ----------
+    folder_path : Path or str, optional
+        The path to the zarr store. If None, no data will be saved.
+    file_name : str, optional
+        The name of the zarr store. If not given, the name of the folder_path.
+    core : CMMCorePlus, optional
+        The core to use. If not given, the default core will be used. 
+    """
     def __init__(
-        self,
-        store_name: Union[str, Path],
-        img_shape: Tuple[int, int],
-        dtype: npt.DTypeLike,
-        core: CMMCorePlus = None,
-    ):
-        """
-        Parameters
-        ----------
-        store_name : str
-            Should accept .format(run=INT)
-        img_shape : (int, int)
-        dtype : numpy dtype
-        core : CMMCorePlus, optional
-            If not given the current core instance will be used.
-        """
-        if zarr is None:
-            raise ValueError(
-                "This writer requires zarr to be installed. Try: `pip install zarr`"
-            )
-        super().__init__(core)
-
-        self._store_name = str(store_name)
-        self._img_shape = img_shape
-        self._dtype = dtype
-
-    def _onMDAStarted(self, sequence: MDASequence):
-        self._axis_order = self.sequence_axis_order(sequence)
-
-        name = self.get_unique_folder(self._store_name, suffix=".zarr")
-        assert isinstance(name, (Path, str))
-        self._z = zarr.open(
-            name,
-            # self._store_name.format(run=self._run_number),
-            mode="w",
-            shape=sequence.shape + self._img_shape,
-            dtype=self._dtype,
-        )
-        self._z.attrs["axis_order"] = f"{sequence.axis_order}yx"
-        self._z.attrs["useq-sequence"] = sequence.json()
-
-    def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
-        self._z[self.event_to_index(self._axis_order, event)] = img
-
-
-class ZarrMDASequenceWriter(BaseWriter):
-    def __init__(
-        self, path: Path | str = "", file_name: str = "", core: CMMCorePlus = None
+        self, folder_path: Path | str | None = None, file_name: str = "", core: CMMCorePlus = None
     ) -> None:
         super().__init__(core)
 
-        self._path = path
-        self._file_name = file_name
+        self.folder_path = folder_path
+        self.file_name = file_name
 
         self._zarr_list: list[zarr.Array] = []
 
     def _onMDAStarted(self, sequence: MDASequence):
-        if not self._path:
+        if self.folder_path is None:
             return
         self._zarr_list.clear()
         _path, _name, _shape, dtype, axis_labels = self._determine_zarr_info(sequence)
         self._create_zarr(sequence, _path, _name, _shape, dtype, axis_labels)
 
     def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
-        if not self._path:
+        if self.folder_path is None:
             return
         self._populate_zarr(img, event)
 
@@ -237,8 +219,8 @@ class ZarrMDASequenceWriter(BaseWriter):
         self, sequence: MDASequence
     ) -> tuple[Path, str, tuple, str, list[str]]:
         """Determine the zarr info to then create the zarr array from the sequence."""
-        _folder_name = self._file_name or "exp"
-        _path = self.get_unique_folder(self._path, _folder_name, create=True)
+        _folder_name = self.file_name or "exp"
+        _path = self.get_unique_folder(self.folder_path, _folder_name, create=True)
         _name = _path.stem
         axis_labels, pos_sequence = self._get_axis_labels(sequence)
         array_shape = [sequence.sizes[k] or 1 for k in axis_labels]
@@ -291,7 +273,7 @@ class ZarrMDASequenceWriter(BaseWriter):
         """Populate the zarr array with the image data."""
         axis_order, _ = self._get_axis_labels(event.sequence)
 
-        _next_name = self.get_unique_folder(self._path, self._file_name or "exp").stem
+        _next_name = self.get_unique_folder(self.folder_path, self.file_name or "exp").stem
         _num = int(_next_name[-3:]) - 1
         _name = f"{_next_name[:-3]}{_num:03d}"
 

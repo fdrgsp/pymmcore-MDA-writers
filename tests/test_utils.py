@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from pymmcore_mda_writers import BaseWriter
+from pymmcore_mda_writers import BaseMDASequenceWriter
 
 
 def test_unique_folder(tmp_path: Path):
     base_folder = tmp_path / "data/run"
-    unique = BaseWriter.get_unique_folder
+    unique = BaseMDASequenceWriter.get_unique_folder
     for i in range(3):
         print("here: ", i)
         print(unique(base_folder, create=True))
