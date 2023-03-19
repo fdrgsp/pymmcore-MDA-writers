@@ -179,7 +179,6 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
     core : CMMCorePlus, optional
         The core to use. If not given, the default core will be used.
     """
-
     def __init__(
         self,
         folder_path: Path | str | None = None,
@@ -187,6 +186,10 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
         dtype: str = "uint16",
         core: CMMCorePlus = None,
     ) -> None:
+        if zarr is None:
+            raise ValueError(
+                "This writer requires zarr to be installed. Try: `pip install zarr`"
+            )
         super().__init__(core)
 
         self.folder_path = folder_path
