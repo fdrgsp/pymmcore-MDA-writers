@@ -176,6 +176,8 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
         The path to the zarr store. If None, no data will be saved.
     file_name : str, optional
         The name of the zarr store. If not given, the name of the folder_path.
+    dtype : np.dtype, optional
+        The dtype to use. If not given, the dtype of the first frame will be used.
     core : CMMCorePlus, optional
         The core to use. If not given, the default core will be used.
     """
@@ -183,7 +185,7 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
         self,
         folder_path: Path | str | None = None,
         file_name: str = "",
-        dtype: str = "uint16",
+        dtype: npt.DTypeLike | None = None,
         core: CMMCorePlus = None,
     ) -> None:
         if zarr is None:
