@@ -11,12 +11,11 @@ def test_unique_folder(tmp_path: Path):
         print(unique(base_folder, create=True))
     unique(base_folder)
 
-    data_folders = list(map(str, set(tmp_path.glob("data/run_*"))))
-    print(data_folders)
+    data_folders = list(map(str, set(tmp_path.glob("data/run/run_*"))))
     expected = [
-        "run_1",
-        "run_2",
-        "run_3",
+        "run_000",
+        "run_001",
+        "run_002",
     ]
     for e in expected:
-        assert str(tmp_path / "data" / e) in data_folders
+        assert str(tmp_path / "data/run" / e) in data_folders
