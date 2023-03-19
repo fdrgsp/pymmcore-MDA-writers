@@ -128,37 +128,3 @@ def test_disconnect(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
     data_folders = set(tmp_path.glob("mda_data*"))
     assert len(data_folders) == 1
     # assert writer._onMDAFrame.call_count == 3
-
-
-# sequence = MDASequence(
-#     axis_order="tpgcz",
-#     channels=[
-#         {"config": "Cy5", "exposure": 20},
-#         {"config": "FITC", "exposure": 50},
-#     ],
-#     stage_positions=(
-#         {"name": "Pos000", "x": 222, "y": 1, "z": 1},
-#         {"name": "Pos001", "x": 111, "y": 0, "z": 0},
-#         {
-#             "name": "Pos002",
-#             "x": 1,
-#             "y": 2,
-#             "z": 3,
-#             "sequence": {
-#                 "grid_plan": {"rows": 3, "columns": 3},
-#                 "z_plan": {"range": 4, "step": 0.5},
-#                 "channels": [{"config": "Cy5", "exposure": 20}],
-#                 "time_plan": {"interval": 2, "loops": 5}
-#             },
-#         },
-#     ),
-#     grid_plan={"rows": 2, "columns": 2},
-#     z_plan={"range": 2, "step": 1},
-#     time_plan={"interval": 2, "loops": 2},
-# )
-
-
-# core = CMMCorePlus().instance()
-# core.loadSystemConfiguration()
-# w = ZarrMDASequenceWriter(path=Path("/Users/fdrgsp/Desktop/test"))
-# core.run_mda(sequence)
