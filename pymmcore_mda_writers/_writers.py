@@ -115,6 +115,9 @@ class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
         core: CMMCorePlus = None,
     ) -> None:
         """Write each frame from a MDASequence as a separate tiff file.
+
+        e.g. if the sequence is `tpcz`, then the files will be named:
+        `t000_p000_c000_z000.tif`, `t000_p000_c000_z001.tif`, etc.
         
         Parameters
         ----------
@@ -132,14 +135,14 @@ class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
             )
         super().__init__(core)
         self.folder_path = folder_path
-        self.folder_name = file_name
+        self.file_name = file_name
         self._path: Path | None = None
 
     def _onMDAStarted(self, sequence: MDASequence) -> None:
         if self.folder_path is None:
             return
         self._path = self.get_unique_folder(
-            self.folder_path, self.folder_name, create=True
+            self.folder_path, self.file_name, create=True
         )
         self._axis_order = self.sequence_axis_order(sequence)
         with open(self._path / "useq-sequence.json", "w") as f:
