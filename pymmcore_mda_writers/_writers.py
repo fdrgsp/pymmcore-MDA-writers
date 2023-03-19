@@ -183,15 +183,18 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
 
         self.folder_path = folder_path
         self.file_name = file_name
-
-        self._zarr_list: list[zarr.Array] = []
+        self._zarr: zarr.Array | None = None
 
     def _onMDAStarted(self, sequence: MDASequence):
         if self.folder_path is None:
             return
-        self._zarr_list.clear()
-        _path, _name, _shape, dtype, axis_labels = self._determine_zarr_info(sequence)
-        self._create_zarr(sequence, _path, _name, _shape, dtype, axis_labels)
+        self._zarr = None
+        _shape, _axis_labels = self._determine_zarr_shape_and_axis_labels(sequence)
+        _path = self.get_unique_folder(
+            self.folder_path,  self.file_name or "exp", create=True, suffix=".zarr"
+        )
+        dtype = f"uint{self._core.getImageBitDepth()}"
+        self._create_zarr(sequence, _path, _shape, dtype, _axis_labels)
 
     def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
         if self.folder_path is None:
@@ -207,8 +210,8 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
 
         sub_seq_axis: list | None = None
         for p in sequence.stage_positions:
-            if p.sequence:  # type: ignore
-                sub_seq_axis = list(p.sequence.used_axes)  # type: ignore
+            if p.sequence:
+                sub_seq_axis = list(p.sequence.used_axes)
                 break
 
         if sub_seq_axis:
@@ -218,28 +221,25 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
 
         return main_seq_axis, bool(sub_seq_axis)
 
-    def _determine_zarr_info(
+    def _determine_zarr_shape_and_axis_labels(
         self, sequence: MDASequence
     ) -> tuple[Path, str, tuple, str, list[str]]:
         """Determine the zarr info to then create the zarr array from the sequence."""
-        _folder_name = self.file_name or "exp"
-        _path = self.get_unique_folder(self.folder_path, _folder_name, create=True)
-        _name = _path.stem
         axis_labels, pos_sequence = self._get_axis_labels(sequence)
         array_shape = [sequence.sizes[k] or 1 for k in axis_labels]
 
         if pos_sequence:
             for p in sequence.stage_positions:
-                if not p.sequence:  # type: ignore
+                if not p.sequence:
                     continue
-                
-                array_shape = self._update_array_shape(p.sequence, array_shape, axis_labels)
+                array_shape = self._update_array_shape(
+                    p.sequence, array_shape, axis_labels
+                )
 
         yx_shape = [self._core.getImageHeight(), self._core.getImageWidth()]
         _shape = array_shape + yx_shape
-        dtype = f"uint{self._core.getImageBitDepth()}"
 
-        return _path, _name, _shape, dtype, axis_labels
+        return _shape, axis_labels
 
     def _update_array_shape(
         self,
@@ -258,27 +258,21 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
     def _create_zarr(
         self,
         sequence: MDASequence,
-        _path: Path,
-        _name: str,
+        path: Path,
         shape: list[int],
         dtype: npt.DTypeLike,
         axis_labels: list[str],
     ):
         """Create the zarr array."""
-        z = zarr.open(f"{_path}/{_name}.zarr", shape=shape, dtype=dtype, mode="w")
-        z.attrs["name"] = _name
-        z._attrs["uid"] = str(sequence.uid)
-        z.attrs["axis_labels"] = axis_labels
-        z.attrs["sequence"] = sequence.json()
-        self._zarr_list.append(z)
+        self._zarr = zarr.open(f"{path}", shape=shape, dtype=dtype, mode="w")
+        self._zarr.attrs["name"] = path.stem
+        self._zarr._attrs["uid"] = str(sequence.uid)
+        self._zarr.attrs["axis_labels"] = axis_labels
+        self._zarr.attrs["sequence"] = sequence.json()
 
     def _populate_zarr(self, image: np.ndarray, event: MDAEvent) -> None:
         """Populate the zarr array with the image data."""
         axis_order, _ = self._get_axis_labels(event.sequence)
-
-        _next_name = self.get_unique_folder(self.folder_path, self.file_name or "exp").stem
-        _num = int(_next_name[-3:]) - 1
-        _name = f"{_next_name[:-3]}{_num:03d}"
 
         # the index of this event in the full zarr array
         im_idx: tuple[int, ...] = ()
@@ -290,8 +284,4 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
             except KeyError:
                 im_idx += (0,)
 
-        for i in self._zarr_list:
-            i = cast(zarr.Array, i)
-            if (i.attrs["name"], i.attrs["uid"]) == (_name, str(event.sequence.uid)):
-                i[im_idx] = image
-                break
+        self._zarr[im_idx] = image
