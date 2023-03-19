@@ -1,13 +1,14 @@
 from __future__ import annotations
+
 __all__ = [
     "BaseMDASequenceWriter",
-    "MiltiTiffMDASequenceWriter"
+    "MiltiTiffMDASequenceWriter",
     "ZarrMDASequenceWriter",
 ]
 
 import contextlib
 from pathlib import Path
-from typing import Sequence, Tuple, Union, Any, cast
+from typing import Sequence
 
 import numpy as np
 import numpy.typing as npt
@@ -27,13 +28,14 @@ except ModuleNotFoundError:
 
 class BaseMDASequenceWriter:
     """Base class for MDASequence writers.
-    
+
     Parameters
     ----------
     core : CMMCorePlus, optional
         The core to use. If not specified, the active core will be used
         (or a new one will be created)
     """
+
     def __init__(self, core: CMMCorePlus = None) -> None:
         self._core = core or CMMCorePlus.instance()
         self._core.mda.events.sequenceStarted.connect(self._onMDAStarted)
@@ -57,9 +59,9 @@ class BaseMDASequenceWriter:
 
     @staticmethod
     def get_unique_folder(
-        folder_path: Union[str, Path],
+        folder_path: str | Path,
         folder_name: str = "",
-        suffix: Union[str, Path] = None,
+        suffix: str | Path = None,
         create: bool = False,
     ) -> Path:
         """
@@ -92,20 +94,6 @@ class BaseMDASequenceWriter:
             path.mkdir(parents=True)
         return path
 
-    @staticmethod
-    def sequence_axis_order(seq: MDASequence) -> Tuple[str]:
-        """Get the axis order using only axes that are present in events."""
-        # hacky way to drop unncessary parts of the axis order
-        # e.g. drop the `p` in `tpcz` if there is only one position
-        # TODO: add a better implementation upstream in useq
-        event = next(seq.iter_events())
-        event_axes = list(event.index.keys())
-        return tuple(a for a in seq.axis_order if a in event_axes)
-
-    @staticmethod
-    def event_to_index(axis_order: Sequence[str], event: MDAEvent) -> Tuple[int, ...]:
-        return tuple(event.index[a] for a in axis_order)
-
 
 class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
     def __init__(
@@ -118,7 +106,7 @@ class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
 
         e.g. if the sequence is `tpcz`, then the files will be named:
         `t000_p000_c000_z000.tif`, `t000_p000_c000_z001.tif`, etc.
-        
+
         Parameters
         ----------
         folder_path : str or Path, optional
@@ -126,7 +114,7 @@ class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
         file_name : str, optional
             The folder name to use. If not given, the name of the folder_path.
         core : CMMCorePlus, optional
-            The core to use. If not given, the default core will be used.    
+            The core to use. If not given, the default core will be used.
         """
         if tifffile is None:
             raise ValueError(
@@ -137,6 +125,20 @@ class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
         self.folder_path = folder_path
         self.file_name = file_name
         self._path: Path | None = None
+
+    def sequence_axis_order(self, sequence: MDASequence) -> tuple[str]:
+        """Get the axis order using only axes that are present in events."""
+        # hacky way to drop unncessary parts of the axis order
+        # e.g. drop the `p` in `tpcz` if there is only one position
+        # TODO: add a better implementation upstream in useq
+        event = next(sequence.iter_events())
+        event_axes = list(event.index.keys())
+        return tuple(a for a in sequence.axis_order if a in event_axes)
+
+    def event_to_index(
+        self, axis_order: Sequence[str], event: MDAEvent
+    ) -> tuple[int, ...]:
+        return tuple(event.index[a] for a in axis_order)
 
     def _onMDAStarted(self, sequence: MDASequence) -> None:
         if self.folder_path is None:
@@ -166,7 +168,7 @@ class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
 
 class ZarrMDASequenceWriter(BaseMDASequenceWriter):
     """Write the MDASequence data to a zarr store.
-    
+
     Parameters
     ----------
     folder_path : Path or str, optional
@@ -174,10 +176,14 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
     file_name : str, optional
         The name of the zarr store. If not given, the name of the folder_path.
     core : CMMCorePlus, optional
-        The core to use. If not given, the default core will be used. 
+        The core to use. If not given, the default core will be used.
     """
+
     def __init__(
-        self, folder_path: Path | str | None = None, file_name: str = "", core: CMMCorePlus = None
+        self,
+        folder_path: Path | str | None = None,
+        file_name: str = "",
+        core: CMMCorePlus = None,
     ) -> None:
         super().__init__(core)
 
@@ -191,7 +197,7 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
         self._zarr = None
         _shape, _axis_labels = self._determine_zarr_shape_and_axis_labels(sequence)
         _path = self.get_unique_folder(
-            self.folder_path,  self.file_name or "exp", create=True, suffix=".zarr"
+            self.folder_path, self.file_name or "exp", create=True, suffix=".zarr"
         )
         dtype = f"uint{self._core.getImageBitDepth()}"
         self._create_zarr(sequence, _path, _shape, dtype, _axis_labels)
@@ -242,10 +248,7 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
         return _shape, axis_labels
 
     def _update_array_shape(
-        self,
-        sequence: MDASequence,
-        array_shape: list[int],
-        axis_labels: list[str]
+        self, sequence: MDASequence, array_shape: list[int], axis_labels: list[str]
     ) -> list[int] | None:
         """Update the array shape to fit the sub sequence."""
         for ax in "cgzt":
