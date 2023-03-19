@@ -5,12 +5,12 @@ except ImportError:  # pragma: no cover
 __author__ = "Ian Hunt-Isaak"
 __email__ = "ianhuntisaak@gmail.com"
 
-from ._writers import BaseWriter, SimpleMultiFileTiffWriter, ZarrWriter, ZarrNapariMicromanagerWriter
+from ._writers import BaseWriter, SimpleMultiFileTiffWriter, ZarrWriter, ZarrMDASequenceWriter
 
 __all__ = [
     "__version__",
     "BaseWriter",
     "SimpleMultiFileTiffWriter",
     "ZarrWriter",
-    "ZarrNapariMicromanagerWriter",
+    "ZarrMDASequenceWriter",
 ]

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 __all__ = [
     "BaseWriter",
     "SimpleMultiFileTiffWriter",
     "ZarrWriter",
-    "ZarrNapariMicromanagerWriter",
+    "ZarrMDASequenceWriter",
 ]
 from pathlib import Path
 from typing import Sequence, Tuple, Union, Any, cast
@@ -189,7 +190,7 @@ class ZarrWriter(BaseWriter):
         self._z[self.event_to_index(self._axis_order, event)] = img
 
 
-class ZarrNapariMicromanagerWriter(BaseWriter):
+class ZarrMDASequenceWriter(BaseWriter):
     def __init__(
         self, path: Path | str = "", file_name: str = "", core: CMMCorePlus = None
     ) -> None:
@@ -226,7 +227,9 @@ class ZarrNapariMicromanagerWriter(BaseWriter):
                 break
 
         if sub_seq_axis:
-            main_seq_axis.extend(sub_seq_axis)
+            for i in sub_seq_axis:
+                if i not in main_seq_axis:
+                    main_seq_axis.append(i)
 
         return main_seq_axis, bool(sub_seq_axis)
 
@@ -244,15 +247,28 @@ class ZarrNapariMicromanagerWriter(BaseWriter):
             for p in sequence.stage_positions:
                 if not p.sequence:  # type: ignore
                     continue
-                pos_g_shape = p.sequence.sizes["g"]  # type: ignore
-                index = axis_labels.index("g")
-                array_shape[index] = max(array_shape[index], pos_g_shape)
+                
+                array_shape = self._update_array_shape(p.sequence, array_shape, axis_labels)
 
         yx_shape = [self._core.getImageHeight(), self._core.getImageWidth()]
         _shape = array_shape + yx_shape
         dtype = f"uint{self._core.getImageBitDepth()}"
 
         return _path, _name, _shape, dtype, axis_labels
+
+    def _update_array_shape(
+        self,
+        sequence: MDASequence,
+        array_shape: list[int],
+        axis_labels: list[str]
+    ) -> list[int] | None:
+        """Update the array shape to fit the sub sequence."""
+        for ax in "cgzt":
+            with contextlib.suppress(ValueError):
+                axes_shape = sequence.sizes[ax]  # type: ignore
+                index = axis_labels.index(ax)
+                array_shape[index] = max(array_shape[index], axes_shape)
+        return array_shape
 
     def _create_zarr(
         self,
