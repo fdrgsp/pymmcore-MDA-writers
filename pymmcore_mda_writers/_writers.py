@@ -1,16 +1,20 @@
+from __future__ import annotations
+
 __all__ = [
     "BaseWriter",
     "SimpleMultiFileTiffWriter",
     "ZarrWriter",
+    "ZarrNapariMicromanagerWriter",
 ]
 from pathlib import Path
-from typing import Sequence, Tuple, Union
+from typing import Sequence, Tuple, Union, Any, cast
 
 import numpy as np
 import numpy.typing as npt
 from pymmcore_plus import CMMCorePlus
 from pymmcore_plus.mda import PMDAEngine
 from useq import MDAEvent, MDASequence
+from useq import NoGrid
 
 try:
     import tifffile
@@ -69,10 +73,10 @@ class BaseWriter:
         stem = folder_name or str(folder.stem)
 
         def new_path(i):
-            path = folder / f"{stem}_{i}"
+            path = folder / f"{stem}_{i:03d}"
             return path.with_suffix(suffix) if suffix else path
 
-        i = 1
+        i = 0
         path = new_path(i)
         while path.exists():
             i += 1
@@ -98,7 +102,10 @@ class BaseWriter:
 
 class SimpleMultiFileTiffWriter(BaseWriter):
     def __init__(
-        self, data_folder_path: Union[str, Path] = "", data_folder_name: str = "", core: CMMCorePlus = None
+        self,
+        data_folder_path: Union[str, Path] = "",
+        data_folder_name: str = "",
+        core: CMMCorePlus = None,
     ) -> None:
         if tifffile is None:
             raise ValueError(
@@ -110,12 +117,18 @@ class SimpleMultiFileTiffWriter(BaseWriter):
         self._data_folder_name = data_folder_name
 
     def _onMDAStarted(self, sequence: MDASequence) -> None:
-        self._path = self.get_unique_folder(self._data_folder_path, self._data_folder_name, create=True)
+        if not self._data_folder_path:
+            return
+        self._path = self.get_unique_folder(
+            self._data_folder_path, self._data_folder_name, create=True
+        )
         self._axis_order = self.sequence_axis_order(sequence)
         with open(self._path / "useq-sequence.json", "w") as f:
             f.write(sequence.json())
 
     def _onMDAFrame(self, img: np.ndarray, event: MDASequence) -> None:
+        if not self._data_folder_path:
+            return
         index = self.event_to_index(self._axis_order, event)
         name = (
             "_".join(
@@ -174,3 +187,110 @@ class ZarrWriter(BaseWriter):
 
     def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
         self._z[self.event_to_index(self._axis_order, event)] = img
+
+
+class ZarrNapariMicromanagerWriter(BaseWriter):
+    def __init__(
+        self, path: Path | str = "", file_name: str = "", core: CMMCorePlus = None
+    ) -> None:
+        super().__init__(core)
+
+        self._path = path
+        self._file_name = file_name
+
+        self._zarr_list: list[zarr.Array] = []
+
+    def _onMDAStarted(self, sequence: MDASequence):
+        if not self._path:
+            return
+        self._zarr_list.clear()
+        _path, _name, _shape, dtype, axis_labels = self._determine_zarr_info(sequence)
+        self._create_zarr(sequence, _path, _name, _shape, dtype, axis_labels)
+
+    def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
+        if not self._path:
+            return
+        self._populate_zarr(img, event)
+
+    def _get_axis_labels(self, sequence: MDASequence) -> tuple[list[str], bool]:
+        # sourcery skip: use-next
+        main_seq_axis = list(sequence.used_axes)
+
+        if not sequence.stage_positions:
+            return main_seq_axis, False
+
+        sub_seq_axis: list | None = None
+        for p in sequence.stage_positions:
+            if p.sequence:  # type: ignore
+                sub_seq_axis = list(p.sequence.used_axes)  # type: ignore
+                break
+
+        if sub_seq_axis:
+            main_seq_axis.extend(sub_seq_axis)
+
+        return main_seq_axis, bool(sub_seq_axis)
+
+    def _determine_zarr_info(
+        self, sequence: MDASequence
+    ) -> tuple[Path, str, tuple, str, list[str]]:
+        """Determine the zarr info to then create the zarr array from the sequence."""
+        _folder_name = self._file_name or "exp"
+        _path = self.get_unique_folder(self._path, _folder_name, create=True)
+        _name = _path.stem
+        axis_labels, pos_sequence = self._get_axis_labels(sequence)
+        array_shape = [sequence.sizes[k] or 1 for k in axis_labels]
+
+        if pos_sequence:
+            for p in sequence.stage_positions:
+                if not p.sequence:  # type: ignore
+                    continue
+                pos_g_shape = p.sequence.sizes["g"]  # type: ignore
+                index = axis_labels.index("g")
+                array_shape[index] = max(array_shape[index], pos_g_shape)
+
+        yx_shape = [self._core.getImageHeight(), self._core.getImageWidth()]
+        _shape = array_shape + yx_shape
+        dtype = f"uint{self._core.getImageBitDepth()}"
+
+        return _path, _name, _shape, dtype, axis_labels
+
+    def _create_zarr(
+        self,
+        sequence: MDASequence,
+        _path: Path,
+        _name: str,
+        shape: list[int],
+        dtype: npt.DTypeLike,
+        axis_labels: list[str],
+    ):
+        """Create the zarr array."""
+        z = zarr.open(f"{_path}/{_name}.zarr", shape=shape, dtype=dtype, mode="w")
+        z.attrs["name"] = _name
+        z._attrs["uid"] = str(sequence.uid)
+        z.attrs["axis_labels"] = axis_labels
+        z.attrs["sequence"] = sequence.json()
+        self._zarr_list.append(z)
+
+    def _populate_zarr(self, image: np.ndarray, event: MDAEvent) -> None:
+        """Populate the zarr array with the image data."""
+        axis_order, _ = self._get_axis_labels(event.sequence)
+
+        _next_name = self.get_unique_folder(self._path, self._file_name or "exp").stem
+        _num = int(_next_name[-3:]) - 1
+        _name = f"{_next_name[:-3]}{_num:03d}"
+
+        # the index of this event in the full zarr array
+        im_idx: tuple[int, ...] = ()
+        for k in axis_order:
+            try:
+                im_idx += (event.index[k],)
+            # if axis not in event.index
+            # e.g. if we have bot a position sequence grid and a single position
+            except KeyError:
+                im_idx += (0,)
+
+        for i in self._zarr_list:
+            i = cast(zarr.Array, i)
+            if (i.attrs["name"], i.attrs["uid"]) == (_name, str(event.sequence.uid)):
+                i[im_idx] = image
+                break
