@@ -267,7 +267,7 @@ class ZarrMDASequenceWriter(BaseMDASequenceWriter):
         self._zarr = zarr.open(f"{path}", shape=shape, dtype=dtype, mode="w")
         self._zarr.attrs["name"] = path.stem
         self._zarr._attrs["uid"] = str(sequence.uid)
-        self._zarr.attrs["axis_labels"] = axis_labels
+        self._zarr.attrs["axis_labels"] = axis_labels + ["y", "x"]
         self._zarr.attrs["sequence"] = sequence.json()
 
     def _populate_zarr(self, image: np.ndarray, event: MDAEvent) -> None:
