@@ -28,7 +28,18 @@ def core() -> CMMCorePlus:
 def test_engine_registration(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
     mda = MDASequence(
         metadata={"blah": "blah blah blah"},
-        stage_positions=[(1, 1, 1)],
+        stage_positions=[
+            (1, 1, 1),
+            {
+                "x": 2,
+                "y": 2,
+                "z": 2,
+                "sequence": {
+                    "grid_plan": {"rows": 2, "columns": 1},
+                    "z_plan": {"range": 2, "step": 1},
+                },
+            },
+        ],
         z_plan={"range": 3, "step": 1},
         channels=[{"config": "DAPI", "exposure": 1}],
     )
@@ -47,14 +58,18 @@ def test_engine_registration(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
     arr1 = np.asarray(run1)
     run2 = zarr.open(tmp_path / "zarr_data_001.zarr")
     arr2 = np.asarray(run2)
-    assert arr1.shape == (1, 1, 4, 512, 512)
-    assert arr2.shape == (1, 1, 4, 512, 512)
-    for i in range(4):
-        assert not np.all(arr1[0, 0, i] == 0)
-        assert not np.all(arr2[0, 0, i] == 0)
+    assert arr1.shape == (2, 1, 4, 2, 512, 512)  # p c z g x y
+    assert arr2.shape == (2, 1, 4, 2, 512, 512)  # p c z g x y
+
+    assert sum(sum(arr1[0, 0, 3, 0])) > 0  # z_plan
+    assert sum(sum(arr1[1, 0, 3, 0])) == 0  # z_plan
+
+    assert sum(sum(arr1[0, 0, 0, 1])) == 0  # grid_plan
+    assert sum(sum(arr1[1, 0, 0, 0])) > 0  # grid_plan
+
     attrs = run2.attrs.asdict()
     assert attrs["name"] == "zarr_data_001"
-    assert attrs["axis_labels"] == ["p", "c", "z", "y", "x"]
+    assert attrs["axis_labels"] == ["p", "c", "z", "g", "y", "x"]
     assert attrs["uid"] == str(mda.uid)
     assert mda == MDASequence(**json.loads(attrs["sequence"]))
 
@@ -128,3 +143,7 @@ def test_disconnect(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
     data_folders = set(tmp_path.glob("mda_data*"))
     assert len(data_folders) == 1
     # assert writer._onMDAFrame.call_count == 3
+
+
+
+
