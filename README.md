@@ -16,16 +16,16 @@ any mechanism for saving image (check in https://github.com/tlambert03/pymmcore-
 pip install pymmcore-mda-writers
 ```
 
-(This will require a minimum of pymmcore-plus>=0.4.0 which has not yet been released. You can install a working version with `pip install git+https://github.com/tlambert03/pymmcore-plus`)
+(This will require a minimum of useq-schema>=0.1.5 which has not yet been released. You can install a working version with `pip install git+https://github.com/pymmcore-plus/useq-schema`)
 
 
 All you need to add to your script is:
 ```python
 # tiff writer
-writer = SimpleMultiFileTiffWriter("data/tiff_writer_example/run")
+writer = MiltiTiffMDASequenceWriter(folder_path="data/tiff_writer_example", file_name="run")
 
 # zarr writer
-writer = ZarrWriter("data/zarr_writer_example/run", img_shape=(512, 512), dtype=np.uint16)
+writer = ZarrMDASequenceWriter(folder_path="data/zarr_writer_example", file_name="run")
 ```
 
 for a complete example see the examples folder.
