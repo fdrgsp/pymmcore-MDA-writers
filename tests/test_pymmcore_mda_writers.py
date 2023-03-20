@@ -11,7 +11,7 @@ from pymmcore_plus import CMMCorePlus
 from pymmcore_plus.mda import MDAEngine
 from useq import MDASequence
 
-from pymmcore_mda_writers import ZarrMDASequenceWriter, MiltiTiffMDASequenceWriter
+from pymmcore_mda_writers import ZarrWriter, MiltiTiffWriter
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -44,7 +44,7 @@ def test_engine_registration(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         channels=[{"config": "DAPI", "exposure": 1}],
     )
 
-    writer = ZarrMDASequenceWriter(  # noqa
+    writer = ZarrWriter(  # noqa
         tmp_path, "zarr_data", dtype=np.uint16, core=core
     )
     new_engine = MDAEngine(core)
@@ -82,7 +82,7 @@ def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         z_plan={"range": 3, "step": 1},
         channels=[{"config": "DAPI", "exposure": 1}],
     )
-    writer = MiltiTiffMDASequenceWriter(str(tmp_path / "mda_data"), core=core)  # noqa
+    writer = MiltiTiffWriter(str(tmp_path / "mda_data"), core=core)  # noqa
 
     # run twice to check that we aren't overwriting files
     with qtbot.waitSignal(core.mda.events.sequenceFinished):
@@ -119,11 +119,11 @@ def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
 def test_missing_deps():
     with patch("pymmcore_mda_writers._writers.tifffile", None):
         with pytest.raises(ValueError) as e:
-            MiltiTiffMDASequenceWriter("blarg")
+            MiltiTiffWriter("blarg")
         assert "requires tifffile to be installed" in str(e)
     with patch("pymmcore_mda_writers._writers.zarr", None):
         with pytest.raises(ValueError) as e:
-            ZarrMDASequenceWriter("blarg", np.uint16)
+            ZarrWriter("blarg", np.uint16)
         assert "requires zarr to be installed" in str(e)
 
 
@@ -134,7 +134,7 @@ def test_disconnect(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         channels=[{"config": "DAPI", "exposure": 1}],
     )
 
-    writer = MiltiTiffMDASequenceWriter(tmp_path / "mda_data", core)
+    writer = MiltiTiffWriter(tmp_path / "mda_data", core)
     with qtbot.waitSignal(core.mda.events.sequenceFinished):
         core.run_mda(mda).join()
     writer.disconnect()

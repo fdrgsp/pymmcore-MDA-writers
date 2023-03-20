@@ -11,7 +11,7 @@ import tifffile
 from pymmcore_plus import CMMCorePlus
 from useq import MDASequence
 
-from pymmcore_mda_writers import MiltiTiffMDASequenceWriter
+from pymmcore_mda_writers import MiltiTiffWriter
 
 core = CMMCorePlus.instance()
 core.loadSystemConfiguration()
@@ -26,7 +26,7 @@ mda = MDASequence(
 # This will automatically get the same core instance we used above
 # if you are not using the core singleton make sure to pass core to
 # the writer init.
-writer = MiltiTiffMDASequenceWriter(
+writer = MiltiTiffWriter(
     folder_path="data/tiff_writer_example", file_name="run"
 )
 

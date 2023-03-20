@@ -12,7 +12,7 @@ import zarr
 from pymmcore_plus import CMMCorePlus
 from useq import MDASequence
 
-from pymmcore_mda_writers import ZarrMDASequenceWriter
+from pymmcore_mda_writers import ZarrWriter
 
 core = CMMCorePlus.instance()
 core.loadSystemConfiguration()
@@ -30,7 +30,7 @@ mda = MDASequence(
 
 # the zarr writer requires that give it the dtype and shape of images on init
 # For the demo camera these will be (512, 512) and uint16 respectively
-writer = ZarrMDASequenceWriter(folder_path="data/zarr_writer_example", file_name="run")
+writer = ZarrWriter(folder_path="data/zarr_writer_example", file_name="run")
 
 
 # run the MDA twice

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 __all__ = [
-    "BaseMDASequenceWriter",
-    "MiltiTiffMDASequenceWriter",
-    "ZarrMDASequenceWriter",
+    "BaseWriter",
+    "MiltiTiffWriter",
+    "ZarrWriter",
 ]
 
 import contextlib
@@ -26,7 +26,7 @@ except ModuleNotFoundError:
     zarr = None
 
 
-class BaseMDASequenceWriter:
+class BaseWriter:
     """Base class for MDASequence writers.
 
     Parameters
@@ -95,7 +95,7 @@ class BaseMDASequenceWriter:
         return path
 
 
-class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
+class MiltiTiffWriter(BaseWriter):
     def __init__(
         self,
         folder_path: str | Path | None = None,
@@ -166,7 +166,7 @@ class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
         tifffile.imwrite(self._path / name, img)
 
 
-class ZarrMDASequenceWriter(BaseMDASequenceWriter):
+class ZarrWriter(BaseWriter):
     """Write the MDASequence data to a zarr store.
 
     Parameters
