@@ -11,7 +11,7 @@ import tifffile
 from pymmcore_plus import CMMCorePlus
 from useq import MDASequence
 
-from pymmcore_mda_writers import SimpleMultiFileTiffWriter
+from pymmcore_mda_writers import MiltiTiffMDASequenceWriter
 
 core = CMMCorePlus.instance()
 core.loadSystemConfiguration()
@@ -26,7 +26,9 @@ mda = MDASequence(
 # This will automatically get the same core instance we used above
 # if you are not using the core singleton make sure to pass core to
 # the writer init.
-writer = SimpleMultiFileTiffWriter("data/tiff_writer_example/run")
+writer = MiltiTiffMDASequenceWriter(
+    folder_path="data/tiff_writer_example", file_name="run"
+)
 
 
 th = core.run_mda(mda)
@@ -36,11 +38,11 @@ th.join()
 
 
 # You can load the saved images using tifffile
-print(tifffile.imread("data/tiff_writer_example/run_1/t000_p000_c000_z000.tiff"))
+print(tifffile.imread("data/tiff_writer_example/run_000/t000_p000_c000_z000.tiff"))
 
 # you can also load the MDASequence from `useq-sequence.json` file
 # which is saved a json file in the same directory as the images
-with open("data/tiff_writer_example/run_1/useq-sequence.json") as f:
+with open("data/tiff_writer_example/run_000/useq-sequence.json") as f:
     saved_sequence = json.load(f)
 
 # reconstruct as an MDASequence

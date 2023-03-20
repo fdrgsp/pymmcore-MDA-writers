@@ -12,7 +12,7 @@ import zarr
 from pymmcore_plus import CMMCorePlus
 from useq import MDASequence
 
-from pymmcore_mda_writers import ZarrWriter
+from pymmcore_mda_writers import ZarrMDASequenceWriter
 
 core = CMMCorePlus.instance()
 core.loadSystemConfiguration()
@@ -30,7 +30,7 @@ mda = MDASequence(
 
 # the zarr writer requires that give it the dtype and shape of images on init
 # For the demo camera these will be (512, 512) and uint16 respectively
-writer = ZarrWriter("data/zarr_writer_example/run", (512, 512), np.uint16)
+writer = ZarrMDASequenceWriter(folder_path="data/zarr_writer_example", file_name="run")
 
 
 # run the MDA twice
@@ -44,8 +44,8 @@ th = core.run_mda(mda)
 th.join()
 
 # If you run  may need to increment
-run_1 = zarr.open("data/zarr_writer_example/run_1.zarr")
-run_2 = zarr.open("data/zarr_writer_example/run_2.zarr")
+run_1 = zarr.open("data/zarr_writer_example/run_000.zarr")
+run_2 = zarr.open("data/zarr_writer_example/run_001.zarr")
 
 
 print(run_2)
@@ -56,5 +56,5 @@ print(run_2)
 print(run_2.attrs.asdict())
 
 # you can fully reconstruct the original sequence like so
-saved_sequence_as_useq = MDASequence(**json.loads(run_2.attrs["useq-sequence"]))
+saved_sequence_as_useq = MDASequence(**json.loads(run_2.attrs["sequence"]))
 print(saved_sequence_as_useq)
