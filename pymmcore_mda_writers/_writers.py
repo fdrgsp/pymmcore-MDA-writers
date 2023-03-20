@@ -100,7 +100,6 @@ class MiltiTiffMDASequenceWriter(BaseMDASequenceWriter):
         self,
         folder_path: str | Path | None = None,
         file_name: str = "",
-        dtype: npt.DTypeLike | None = None,
         core: CMMCorePlus = None,
     ) -> None:
         """Write each frame from a MDASequence as a separate tiff file.
