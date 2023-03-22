@@ -232,7 +232,7 @@ class ZarrWriter(BaseWriter):
                 if i not in main_seq_axis:
                     main_seq_axis.append(i)
 
-        return main_seq_axis, bool(sub_seq_axis)
+        return list(set(main_seq_axis)), bool(sub_seq_axis)
 
     def _determine_zarr_shape_and_axis_labels(
         self, sequence: MDASequence
