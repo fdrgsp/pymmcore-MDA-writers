@@ -150,7 +150,7 @@ class MiltiTiffWriter(BaseWriter):
         with open(self._path / "useq-sequence.json", "w") as f:
             f.write(sequence.json())
 
-    def _onMDAFrame(self, img: np.ndarray, event: MDASequence) -> None:
+    def _onMDAFrame(self, img: np.ndarray, event: MDAEvent) -> None:
         if self.folder_path is None:
             return
         index = self.event_to_index(self._axis_order, event)
