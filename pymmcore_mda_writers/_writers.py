@@ -146,6 +146,15 @@ class MiltiTiffWriter(BaseWriter):
         self._path = self.get_unique_folder(
             self.folder_path, self.file_name, create=True
         )
+
+        if len(sequence.stage_positions) > 1:
+            for p in range(len(sequence.stage_positions)):
+                pos_path = self._path / f"pos_{p:03d}"
+                pos_path.mkdir()
+        else:
+            pos_path = self._path / "pos_000"
+            pos_path.mkdir()
+
         self._axis_order = self.sequence_axis_order(sequence)
         with open(self._path / "useq-sequence.json", "w") as f:
             f.write(sequence.json())
@@ -163,7 +172,9 @@ class MiltiTiffWriter(BaseWriter):
             )
             + ".tiff"
         )
-        tifffile.imwrite(self._path / name, img)
+
+        pos_path = self._path / f"pos_{event.index.get('p', 0):03d}"
+        tifffile.imwrite(pos_path / name, img)
 
 
 class ZarrWriter(BaseWriter):
