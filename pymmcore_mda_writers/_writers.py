@@ -126,27 +126,36 @@ class MiltiTiffWriter(BaseWriter):
         self.file_name = file_name
         self._path: Path | None = None
 
-    def sequence_axis_order(self, sequence: MDASequence) -> tuple[str]:
+    def _get_axis_order(self, sequence: MDASequence) -> tuple[str, ...]:
         """Get the axis order using only axes that are present in events."""
-        # hacky way to drop unncessary parts of the axis order
-        # e.g. drop the `p` in `tpcz` if there is only one position
-        # TODO: add a better implementation upstream in useq
-        event = next(sequence.iter_events())
-        event_axes = list(event.index.keys())
-        return tuple(a for a in sequence.axis_order if a in event_axes)
+        # axis main sequence
+        main_seq_axis = list(sequence.used_axes)
+        if not sequence.stage_positions:
+            return main_seq_axis
+        # axes from sub sequences
+        sub_seq_axis: list = []
+        for p in sequence.stage_positions:
+            if p.sequence is not None:
+                sub_seq_axis.extend(p.sequence.used_axes)
+        return tuple(set(main_seq_axis + sub_seq_axis))
 
-    def event_to_index(
+    def _event_to_index(
         self, axis_order: Sequence[str], event: MDAEvent
     ) -> tuple[int, ...]:
+        """Return the index of each axes for this event."""
         return tuple(event.index[a] for a in axis_order)
 
     def _onMDAStarted(self, sequence: MDASequence) -> None:
+        # if folder path is not specified, don't save any data
         if self.folder_path is None:
             return
+
+        # create unique folder path
         self._path = self.get_unique_folder(
             self.folder_path, self.file_name, create=True
         )
 
+        # if the sequence has multiple positions, create a folder for each position
         if len(sequence.stage_positions) > 1:
             for p in range(len(sequence.stage_positions)):
                 pos_path = self._path / f"pos_{p:03d}"
@@ -154,15 +163,19 @@ class MiltiTiffWriter(BaseWriter):
         else:
             pos_path = self._path / "pos_000"
             pos_path.mkdir()
-
-        self._axis_order = self.sequence_axis_order(sequence)
+        
+        # save the sequence info as json
         with open(self._path / "useq-sequence.json", "w") as f:
             f.write(sequence.json())
 
+        # get the axis order
+        self._axis_order = self._get_axis_order(sequence)
+
     def _onMDAFrame(self, img: np.ndarray, event: MDAEvent) -> None:
+        """Save the image as a tiff file at every core frameReady signal."""
         if self.folder_path is None:
             return
-        index = self.event_to_index(self._axis_order, event)
+        index = self._event_to_index(self._axis_order, event)
         name = (
             "_".join(
                 [
@@ -306,3 +319,4 @@ class ZarrWriter(BaseWriter):
                 im_idx += (0,)
 
         self._zarr[im_idx] = image
+
