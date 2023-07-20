@@ -6,14 +6,12 @@ __all__ = [
     "ZarrWriter",
 ]
 
-import contextlib
 from pathlib import Path
 from typing import Sequence
 
 import numpy as np
 import numpy.typing as npt
 from pymmcore_plus import CMMCorePlus
-from pymmcore_plus.mda import PMDAEngine
 from useq import MDAEvent, MDASequence
 
 try:
@@ -48,9 +46,18 @@ class BaseWriter:
     def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
         ...  # pragma: no cover
 
-    def _disconnect(self, engine: PMDAEngine):
-        engine.events.sequenceStarted.disconnect(self._onMDAStarted)
-        engine.events.frameReady.disconnect(self._onMDAFrame)
+    def _get_axis_labels(self, sequence: MDASequence) -> tuple[str, ...]:
+        """Get the axis labels using only axes that are present in events."""
+        # axis main sequence
+        main_seq_axis = list(sequence.used_axes)
+        if not sequence.stage_positions:
+            return main_seq_axis
+        # axes from sub sequences
+        sub_seq_axis: list = []
+        for p in sequence.stage_positions:
+            if p.sequence is not None:
+                sub_seq_axis.extend(p.sequence.used_axes)
+        return tuple(set(main_seq_axis + sub_seq_axis))
 
     def disconnect(self):
         "Disconnect this writer from processing any more events"
@@ -126,19 +133,6 @@ class MiltiTiffWriter(BaseWriter):
         self.file_name = file_name
         self._path: Path | None = None
 
-    def _get_axis_order(self, sequence: MDASequence) -> tuple[str, ...]:
-        """Get the axis order using only axes that are present in events."""
-        # axis main sequence
-        main_seq_axis = list(sequence.used_axes)
-        if not sequence.stage_positions:
-            return main_seq_axis
-        # axes from sub sequences
-        sub_seq_axis: list = []
-        for p in sequence.stage_positions:
-            if p.sequence is not None:
-                sub_seq_axis.extend(p.sequence.used_axes)
-        return tuple(set(main_seq_axis + sub_seq_axis))
-
     def _event_to_index(
         self, axis_order: Sequence[str], event: MDAEvent
     ) -> tuple[int, ...]:
@@ -163,18 +157,20 @@ class MiltiTiffWriter(BaseWriter):
         else:
             pos_path = self._path / "pos_000"
             pos_path.mkdir()
-        
+
         # save the sequence info as json
         with open(self._path / "useq-sequence.json", "w") as f:
             f.write(sequence.json())
 
         # get the axis order
-        self._axis_order = self._get_axis_order(sequence)
+        self._axis_order = self._get_axis_labels(sequence)
 
     def _onMDAFrame(self, img: np.ndarray, event: MDAEvent) -> None:
         """Save the image as a tiff file at every core frameReady signal."""
+        # if folder path is not specified, don't save any data
         if self.folder_path is None:
             return
+
         index = self._event_to_index(self._axis_order, event)
         name = (
             "_".join(
@@ -204,11 +200,12 @@ class ZarrWriter(BaseWriter):
     core : CMMCorePlus, optional
         The core to use. If not given, the default core will be used.
     """
+
     def __init__(
         self,
         folder_path: Path | str | None = None,
         file_name: str = "",
-        dtype: npt.DTypeLike | None = None,
+        dtype: np.dtype | None = None,
         core: CMMCorePlus = None,
     ) -> None:
         if zarr is None:
@@ -221,102 +218,81 @@ class ZarrWriter(BaseWriter):
         self.file_name = file_name
         self._dtype = dtype
         self._zarr: zarr.Array | None = None
+        self._axis_labels: tuple[str, ...] | None = None
 
     def _onMDAStarted(self, sequence: MDASequence):
+        # if folder path is not specified, don't save any data
         if self.folder_path is None:
             return
+
         self._zarr = None
-        _shape, _axis_labels = self._determine_zarr_shape_and_axis_labels(sequence)
+        self._axis_label = self._get_axis_labels(sequence)
+        _shape = self._get_array_shape(sequence, self._axis_label)
         _path = self.get_unique_folder(
             self.folder_path, self.file_name or "exp", create=True, suffix=".zarr"
         )
         _dtype = self._dtype or f"uint{self._core.getImageBitDepth()}"
-        self._create_zarr(sequence, _path, _shape, _dtype, _axis_labels)
+        # create the zarr array
+        self._create_zarr(sequence, _path, _shape, _dtype)
 
-    def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
-        if self.folder_path is None:
-            return
-        self._populate_zarr(img, event)
-
-    def _get_axis_labels(self, sequence: MDASequence) -> tuple[list[str], bool]:
-        # sourcery skip: use-next
-        main_seq_axis = list(sequence.used_axes)
-
-        if not sequence.stage_positions:
-            return main_seq_axis, False
-
-        sub_seq_axis: list | None = None
+    def _get_array_shape(
+        self, sequence: MDASequence, axis_labels: tuple[str, ...]
+    ) -> tuple[int, ...]:
+        """Retun the shape for the zarr array.
+        
+        Update the array shape to also fit the sub sequence
+        """
+        # main sequence array shape
+        array_shape = [sequence.sizes[k] or 1 for k in self._axis_labels]
+        # update array shape with sub sequence info
         for p in sequence.stage_positions:
-            if p.sequence:
-                sub_seq_axis = list(p.sequence.used_axes)
-                break
-
-        if sub_seq_axis:
-            for i in sub_seq_axis:
-                if i not in main_seq_axis:
-                    main_seq_axis.append(i)
-
-        return list(set(main_seq_axis)), bool(sub_seq_axis)
-
-    def _determine_zarr_shape_and_axis_labels(
-        self, sequence: MDASequence
-    ) -> tuple[Path, str, tuple, str, list[str]]:
-        """Determine the zarr info to then create the zarr array from the sequence."""
-        axis_labels, pos_sequence = self._get_axis_labels(sequence)
-        array_shape = [sequence.sizes[k] or 1 for k in axis_labels]
-
-        if pos_sequence:
-            for p in sequence.stage_positions:
-                if not p.sequence:
-                    continue
-                array_shape = self._update_array_shape(
-                    p.sequence, array_shape, axis_labels
-                )
-
+            if not p.sequence:
+                continue
+            for ax in "cgzt":
+                if ax in p.sequence.used_axes:
+                    axes_shape = p.sequence.sizes[ax]
+                    index = self._axis_labels.index(ax)
+                    array_shape[index] = max(array_shape[index], axes_shape)
         yx_shape = [self._core.getImageHeight(), self._core.getImageWidth()]
-        _shape = array_shape + yx_shape
-
-        return _shape, axis_labels
-
-    def _update_array_shape(
-        self, sequence: MDASequence, array_shape: list[int], axis_labels: list[str]
-    ) -> list[int] | None:
-        """Update the array shape to fit the sub sequence."""
-        for ax in "cgzt":
-            with contextlib.suppress(ValueError):
-                axes_shape = sequence.sizes[ax]  # type: ignore
-                index = axis_labels.index(ax)
-                array_shape[index] = max(array_shape[index], axes_shape)
-        return array_shape
+        return array_shape + yx_shape
 
     def _create_zarr(
         self,
         sequence: MDASequence,
         path: Path,
         shape: list[int],
-        dtype: npt.DTypeLike,
-        axis_labels: list[str],
+        dtype: np.dtype
     ):
         """Create the zarr array."""
-        self._zarr = zarr.open(f"{path}", shape=shape, dtype=dtype, mode="w")
+        chunk_size = [1] * len(shape[:-2]) + shape[-2:]
+        self._zarr = zarr.open_array(
+            f"{path}", shape=shape, dtype=dtype, mode="w", chunks=chunk_size
+        )
         self._zarr.attrs["name"] = path.stem
         self._zarr._attrs["uid"] = str(sequence.uid)
-        self._zarr.attrs["axis_labels"] = axis_labels + ["y", "x"]
+        self._zarr.attrs["axis_labels"] = self._axis_labels + ["y", "x"]
         self._zarr.attrs["sequence"] = sequence.json()
+        # TODO: add OME metadata with ome-types
+
+    def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
+        # if folder path is not specified, don't save any data
+        if self.folder_path is None:
+            return
+        self._populate_zarr(img, event)
 
     def _populate_zarr(self, image: np.ndarray, event: MDAEvent) -> None:
         """Populate the zarr array with the image data."""
-        axis_order, _ = self._get_axis_labels(event.sequence)
+        axis_order = self._get_axis_labels(event.sequence)
 
         # the index of this event in the full zarr array
         im_idx: tuple[int, ...] = ()
         for k in axis_order:
+            # using try/except in the case the axis is not in event.index
+            # e.g. if in the sequence we have both a position sequence grid and
+            # a single position
             try:
                 im_idx += (event.index[k],)
-            # if axis not in event.index
-            # e.g. if we have bot a position sequence grid and a single position
             except KeyError:
                 im_idx += (0,)
 
         self._zarr[im_idx] = image
-
