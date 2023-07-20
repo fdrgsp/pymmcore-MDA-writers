@@ -47,6 +47,10 @@ def test_engine_registration(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
     writer = ZarrWriter(  # noqa
         tmp_path, "zarr_data", dtype=np.uint16, core=core
     )
+    assert not writer.enabled
+    writer.enabled = True
+    assert writer.enabled
+
     new_engine = MDAEngine(core)
     with qtbot.waitSignal(core.events.mdaEngineRegistered):
         core.register_mda_engine(new_engine)

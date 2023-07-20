@@ -39,6 +39,17 @@ class BaseWriter:
         self._core.mda.events.sequenceStarted.connect(self._onMDAStarted)
         self._core.mda.events.frameReady.connect(self._onMDAFrame)
         # TODO add paused and finished events
+        self._enabled: bool = False
+
+    @property
+    def enabled(self) -> bool:
+        """Whether this writer is enabled."""
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        """Enable/disable this writer."""
+        self._enabled = value
 
     def _onMDAStarted(self, sequence: MDASequence):
         ...
@@ -56,10 +67,12 @@ class BaseWriter:
         sub_seq_axis: list = []
         for p in sequence.stage_positions:
             if p.sequence is not None:
-                sub_seq_axis.extend(p.sequence.used_axes)
-        return tuple(set(main_seq_axis + sub_seq_axis))
+                sub_seq_axis.extend(
+                    [ax for ax in p.sequence.used_axes if ax not in main_seq_axis]
+                )
+        return tuple(main_seq_axis + sub_seq_axis)
 
-    def disconnect(self):
+    def _disconnect(self) -> None:
         "Disconnect this writer from processing any more events"
         self._core.mda.events.sequenceStarted.disconnect(self._onMDAStarted)
         self._core.mda.events.frameReady.disconnect(self._onMDAFrame)
@@ -140,8 +153,7 @@ class MiltiTiffWriter(BaseWriter):
         return tuple(event.index[a] for a in axis_order)
 
     def _onMDAStarted(self, sequence: MDASequence) -> None:
-        # if folder path is not specified, don't save any data
-        if self.folder_path is None:
+        if not self._enabled or self.folder_path is None:
             return
 
         # create unique folder path
@@ -167,8 +179,7 @@ class MiltiTiffWriter(BaseWriter):
 
     def _onMDAFrame(self, img: np.ndarray, event: MDAEvent) -> None:
         """Save the image as a tiff file at every core frameReady signal."""
-        # if folder path is not specified, don't save any data
-        if self.folder_path is None:
+        if not self._enabled or self.folder_path is None:
             return
 
         index = self._event_to_index(self._axis_order, event)
@@ -220,63 +231,53 @@ class ZarrWriter(BaseWriter):
         self._zarr: zarr.Array | None = None
         self._axis_labels: tuple[str, ...] | None = None
 
-    def _onMDAStarted(self, sequence: MDASequence):
-        # if folder path is not specified, don't save any data
-        if self.folder_path is None:
+    def _onMDAStarted(self, sequence: MDASequence) -> None:
+        if not self._enabled or self.folder_path is None:
             return
 
-        self._zarr = None
-        self._axis_label = self._get_axis_labels(sequence)
-        _shape = self._get_array_shape(sequence, self._axis_label)
+        self._axis_labels = self._get_axis_labels(sequence)
+        _shape = self._get_array_shape(sequence)
         _path = self.get_unique_folder(
             self.folder_path, self.file_name or "exp", create=True, suffix=".zarr"
         )
         _dtype = self._dtype or f"uint{self._core.getImageBitDepth()}"
-        # create the zarr array
-        self._create_zarr(sequence, _path, _shape, _dtype)
+        self._zarr = self._create_zarr(sequence, _path, _shape, _dtype)
 
-    def _get_array_shape(
-        self, sequence: MDASequence, axis_labels: tuple[str, ...]
-    ) -> tuple[int, ...]:
+    def _get_array_shape(self, sequence: MDASequence) -> tuple[int, ...]:
         """Retun the shape for the zarr array.
-        
+
         Update the array shape to also fit the sub sequence
         """
         # main sequence array shape
-        array_shape = [sequence.sizes[k] or 1 for k in self._axis_labels]
+        array_shape = [(sequence.sizes[k] or 1) for k in self._axis_labels]
         # update array shape with sub sequence info
         for p in sequence.stage_positions:
             if not p.sequence:
                 continue
-            for ax in "cgzt":
-                if ax in p.sequence.used_axes:
-                    axes_shape = p.sequence.sizes[ax]
-                    index = self._axis_labels.index(ax)
-                    array_shape[index] = max(array_shape[index], axes_shape)
+            for ax in p.sequence.used_axes:
+                axes_shape = p.sequence.sizes[ax]
+                index = self._axis_labels.index(ax)
+                array_shape[index] = max(array_shape[index], axes_shape)
         yx_shape = [self._core.getImageHeight(), self._core.getImageWidth()]
         return array_shape + yx_shape
 
     def _create_zarr(
-        self,
-        sequence: MDASequence,
-        path: Path,
-        shape: list[int],
-        dtype: np.dtype
-    ):
+        self, sequence: MDASequence, path: Path, shape: list[int], dtype: np.dtype
+    ) -> zarr.Array:
         """Create the zarr array."""
         chunk_size = [1] * len(shape[:-2]) + shape[-2:]
-        self._zarr = zarr.open_array(
+        z = zarr.open_array(
             f"{path}", shape=shape, dtype=dtype, mode="w", chunks=chunk_size
         )
-        self._zarr.attrs["name"] = path.stem
-        self._zarr._attrs["uid"] = str(sequence.uid)
-        self._zarr.attrs["axis_labels"] = self._axis_labels + ["y", "x"]
-        self._zarr.attrs["sequence"] = sequence.json()
+        z.attrs["name"] = path.stem
+        z._attrs["uid"] = str(sequence.uid)
+        z.attrs["axis_labels"] = list(self._axis_labels) + ["y", "x"]
+        z.attrs["sequence"] = sequence.json()
         # TODO: add OME metadata with ome-types
+        return z
 
-    def _onMDAFrame(self, img: np.ndarray, event: MDAEvent):
-        # if folder path is not specified, don't save any data
-        if self.folder_path is None:
+    def _onMDAFrame(self, img: np.ndarray, event: MDAEvent) -> None:
+        if not self._enabled or self.folder_path is None:
             return
         self._populate_zarr(img, event)
 
