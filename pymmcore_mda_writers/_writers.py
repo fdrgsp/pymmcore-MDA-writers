@@ -162,7 +162,7 @@ class MiltiTiffWriter(BaseWriter):
             self.folder_path, self.file_name, create=True
         )
 
-        # if the sequence has multiple positions, create a folder for each position
+        # create a folder for each position
         if len(sequence.stage_positions) > 1:
             for p in range(len(sequence.stage_positions)):
                 pos_path = self._path / f"pos_{p:03d}"
@@ -184,18 +184,13 @@ class MiltiTiffWriter(BaseWriter):
             return
 
         index = self._event_to_index(self._axis_order, event)
-        name = (
-            "_".join(
-                [
-                    self._axis_order[i] + f"{index[i]}".zfill(3)
-                    for i in range(len(index))
-                ]
-            )
-            + ".tiff"
-        )
-
+        image_name = [
+            self._axis_order[i] + f"{index[i]}".zfill(3)
+            for i in range(len(index))
+        ]
+        file_name = "_".join(image_name) + ".tiff"
         pos_path = self._path / f"pos_{event.index.get('p', 0):03d}"
-        tifffile.imwrite(pos_path / name, img)
+        tifffile.imwrite(pos_path / file_name, img)
 
 
 class ZarrWriter(BaseWriter):

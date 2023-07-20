@@ -113,11 +113,12 @@ def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         Path("t000_p000_c000_z002.tiff"),
         Path("t000_p000_c000_z003.tiff"),
     ]
-    actual_1 = list((tmp_path / "mda_data" / "mda_data_000").glob("*"))
-    actual_2 = list((tmp_path / "mda_data" / "mda_data_001").glob("*"))
+    actual_1 = list((tmp_path / "mda_data" / "mda_data_000" / "pos_000").glob("*"))
+    actual_2 = list((tmp_path / "mda_data" / "mda_data_001" / "pos_000").glob("*"))
+
     for e in expected:
-        assert tmp_path / "mda_data" / "mda_data_000" / e in actual_1
-        assert tmp_path / "mda_data" / "mda_data_001" / e in actual_2
+        assert tmp_path / "mda_data" / "mda_data_000" / "pos_000" / e in actual_1
+        assert tmp_path / "mda_data" / "mda_data_001" / "pos_000" / e in actual_2
     with open(tmp_path / "mda_data" / "mda_data_000" / "useq-sequence.json") as f:
         seq = MDASequence(**json.load(f))
     assert seq == mda
@@ -152,8 +153,3 @@ def test_disconnect(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         core.run_mda(mda)
     data_folders = set(tmp_path.glob("mda_data*"))
     assert len(data_folders) == 1
-    # assert writer._onMDAFrame.call_count == 3
-
-
-
-
