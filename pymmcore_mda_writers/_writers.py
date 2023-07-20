@@ -13,7 +13,6 @@ import numpy as np
 import numpy.typing as npt
 from pymmcore_plus import CMMCorePlus
 from useq import MDAEvent, MDASequence
-from pymmcore_plus.mda import PMDAEngine
 
 try:
     import tifffile
