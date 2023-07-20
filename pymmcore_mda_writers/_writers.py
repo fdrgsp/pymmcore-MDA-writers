@@ -13,6 +13,7 @@ import numpy as np
 import numpy.typing as npt
 from pymmcore_plus import CMMCorePlus
 from useq import MDAEvent, MDASequence
+from pymmcore_plus.mda import PMDAEngine
 
 try:
     import tifffile
@@ -72,7 +73,16 @@ class BaseWriter:
                 )
         return tuple(main_seq_axis + sub_seq_axis)
 
-    def _disconnect(self) -> None:
+    # def _disconnect(self) -> None:
+    #     "Disconnect this writer from processing any more events"
+    #     self._core.mda.events.sequenceStarted.disconnect(self._onMDAStarted)
+    #     self._core.mda.events.frameReady.disconnect(self._onMDAFrame)
+
+    def _disconnect(self, engine: PMDAEngine):
+        engine.events.sequenceStarted.disconnect(self._onMDAStarted)
+        engine.events.frameReady.disconnect(self._onMDAFrame)
+
+    def disconnect(self):
         "Disconnect this writer from processing any more events"
         self._core.mda.events.sequenceStarted.disconnect(self._onMDAStarted)
         self._core.mda.events.frameReady.disconnect(self._onMDAFrame)
@@ -216,7 +226,7 @@ class ZarrWriter(BaseWriter):
         self,
         folder_path: Path | str | None = None,
         file_name: str = "",
-        dtype: np.dtype | None = None,
+        dtype: npt.DTypeLike | None = None,
         core: CMMCorePlus = None,
     ) -> None:
         if zarr is None:
@@ -262,7 +272,7 @@ class ZarrWriter(BaseWriter):
         return array_shape + yx_shape
 
     def _create_zarr(
-        self, sequence: MDASequence, path: Path, shape: list[int], dtype: np.dtype
+        self, sequence: MDASequence, path: Path, shape: list[int], dtype: npt.DTypeLike
     ) -> zarr.Array:
         """Create the zarr array."""
         chunk_size = [1] * len(shape[:-2]) + shape[-2:]
