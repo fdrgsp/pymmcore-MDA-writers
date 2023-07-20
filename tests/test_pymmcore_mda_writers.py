@@ -87,6 +87,9 @@ def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         channels=[{"config": "DAPI", "exposure": 1}],
     )
     writer = MiltiTiffWriter(str(tmp_path / "mda_data"), core=core)  # noqa
+    assert not writer.enabled
+    writer.enabled = True
+    assert writer.enabled
 
     # run twice to check that we aren't overwriting files
     with qtbot.waitSignal(core.mda.events.sequenceFinished):
@@ -139,9 +142,12 @@ def test_disconnect(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
     )
 
     writer = MiltiTiffWriter(tmp_path / "mda_data", core)
+    assert not writer.enabled
+    writer.enabled = True
+    assert writer.enabled
     with qtbot.waitSignal(core.mda.events.sequenceFinished):
         core.run_mda(mda).join()
-    writer.disconnect()
+    writer._disconnect()
     with qtbot.waitSignal(core.mda.events.sequenceFinished):
         core.run_mda(mda)
     data_folders = set(tmp_path.glob("mda_data*"))

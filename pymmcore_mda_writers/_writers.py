@@ -73,16 +73,7 @@ class BaseWriter:
                 )
         return tuple(main_seq_axis + sub_seq_axis)
 
-    # def _disconnect(self) -> None:
-    #     "Disconnect this writer from processing any more events"
-    #     self._core.mda.events.sequenceStarted.disconnect(self._onMDAStarted)
-    #     self._core.mda.events.frameReady.disconnect(self._onMDAFrame)
-
-    def _disconnect(self, engine: PMDAEngine):
-        engine.events.sequenceStarted.disconnect(self._onMDAStarted)
-        engine.events.frameReady.disconnect(self._onMDAFrame)
-
-    def disconnect(self):
+    def _disconnect(self) -> None:
         "Disconnect this writer from processing any more events"
         self._core.mda.events.sequenceStarted.disconnect(self._onMDAStarted)
         self._core.mda.events.frameReady.disconnect(self._onMDAFrame)
