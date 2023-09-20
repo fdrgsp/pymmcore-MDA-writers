@@ -11,7 +11,7 @@ from pymmcore_plus import CMMCorePlus
 from pymmcore_plus.mda import MDAEngine
 from useq import MDASequence
 
-from pymmcore_mda_writers import ZarrWriter, MiltiTiffWriter
+from pymmcore_mda_writers import ZarrWriter, MultiTiffWriter
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -86,7 +86,7 @@ def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         z_plan={"range": 3, "step": 1},
         channels=[{"config": "DAPI", "exposure": 1}],
     )
-    writer = MiltiTiffWriter(str(tmp_path / "mda_data"), core=core)  # noqa
+    writer = MultiTiffWriter(str(tmp_path / "mda_data"), core=core)  # noqa
     assert not writer.enabled
     writer.enabled = True
     assert writer.enabled
@@ -127,7 +127,7 @@ def test_tiff_writer(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
 def test_missing_deps():
     with patch("pymmcore_mda_writers._writers.tifffile", None):
         with pytest.raises(ValueError) as e:
-            MiltiTiffWriter("blarg")
+            MultiTiffWriter("blarg")
         assert "requires tifffile to be installed" in str(e)
     with patch("pymmcore_mda_writers._writers.zarr", None):
         with pytest.raises(ValueError) as e:
@@ -142,7 +142,7 @@ def test_disconnect(core: CMMCorePlus, tmp_path: Path, qtbot: "QtBot"):
         channels=[{"config": "DAPI", "exposure": 1}],
     )
 
-    writer = MiltiTiffWriter(tmp_path / "mda_data", core)
+    writer = MultiTiffWriter(tmp_path / "mda_data", core)
     assert not writer.enabled
     writer.enabled = True
     assert writer.enabled

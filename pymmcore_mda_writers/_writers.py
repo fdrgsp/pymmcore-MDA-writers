@@ -2,7 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "BaseWriter",
-    "MiltiTiffWriter",
+    "MultiTiffWriter",
     "ZarrWriter",
 ]
 
@@ -50,6 +50,8 @@ class BaseWriter:
     def enabled(self, value: bool) -> None:
         """Enable/disable this writer."""
         self._enabled = value
+
+        print(f"_________________Writer enabled: {value}")
 
     def _onMDAStarted(self, sequence: MDASequence):
         ...
@@ -115,7 +117,7 @@ class BaseWriter:
         return path
 
 
-class MiltiTiffWriter(BaseWriter):
+class MultiTiffWriter(BaseWriter):
     def __init__(
         self,
         folder_path: str | Path | None = None,
@@ -153,6 +155,11 @@ class MiltiTiffWriter(BaseWriter):
         return tuple(event.index[a] for a in axis_order)
 
     def _onMDAStarted(self, sequence: MDASequence) -> None:
+
+        print()
+        print(self)
+        print(self._enabled, self.folder_path, self.file_name)
+
         if not self._enabled or self.folder_path is None:
             return
 
