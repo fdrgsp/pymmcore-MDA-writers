@@ -154,10 +154,6 @@ class MultiTiffWriter(BaseWriter):
 
     def _onMDAStarted(self, sequence: MDASequence) -> None:
 
-        print()
-        print(self)
-        print(self._enabled, self.folder_path, self.file_name)
-
         if not self._enabled or self.folder_path is None:
             return
 
