@@ -51,8 +51,6 @@ class BaseWriter:
         """Enable/disable this writer."""
         self._enabled = value
 
-        print(f"_________________Writer enabled: {value}")
-
     def _onMDAStarted(self, sequence: MDASequence):
         ...
 
